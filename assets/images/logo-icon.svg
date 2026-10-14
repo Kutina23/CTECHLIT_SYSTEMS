@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C4DFF"/>
+      <stop offset="100%" stop-color="#B43FE0"/>
+    </linearGradient>
+    <filter id="iconGlow">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,0.8)" stroke="url(#iconGrad)" stroke-width="2"/>
+  
+  <!-- Circuit "C" shape -->
+  <path d="M38 14 L38 24 L48 24" fill="none" stroke="#2FD9EE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 40 L26 50 L16 50" fill="none" stroke="#7C4DFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M38 14 A18 18 0 0 0 26 50" fill="none" stroke="url(#iconGrad)" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Nodes -->
+  <circle cx="38" cy="14" r="3.5" fill="#2FD9EE" filter="url(#iconGlow)"/>
+  <circle cx="48" cy="24" r="3.5" fill="#7C4DFF" filter="url(#iconGlow)"/>
+  <circle cx="26" cy="50" r="3.5" fill="#B43FE0" filter="url(#iconGlow)"/>
+  <circle cx="16" cy="50" r="3.5" fill="#2FD9EE" filter="url(#iconGlow)"/>
+  
+  <!-- Center core -->
+  <circle cx="32" cy="32" r="5" fill="url(#iconGrad)"/>
+  <circle cx="32" cy="32" r="2" fill="#fff"/>
+</svg>

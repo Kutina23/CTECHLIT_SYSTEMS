@@ -1,0 +1,10 @@
+{
+    "server_url": "http://SERVER-IP/systems",
+    "station_id": 0,
+    "station_code": "ST-UNKNOWN",
+    "station_mac_address": "",
+    "heartbeat_interval": 5,
+    "api_key": "",
+    "listen_port": 8080,
+    "log_level": "INFO"
+}

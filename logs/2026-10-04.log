@@ -1,0 +1,40 @@
+[2026-10-04 11:46:47] [WARNING] Unable to load testimonials: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.testimonials' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load landing FAQs: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.landing_faqs' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load trust badges: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.trust_badges' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load how_it_works steps: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.how_it_works' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load roadmap items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.roadmap_items' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load personas: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.personas' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load gallery items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.gallery_items' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load spotlight items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.spotlight_items' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load why features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.why_features' doesn't exist
+[2026-10-04 11:46:47] [WARNING] Unable to load about features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.about_features' doesn't exist
+[2026-10-04 11:47:39] [WARNING] Unable to load testimonials: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.testimonials' doesn't exist
+[2026-10-04 11:47:45] [WARNING] Unable to load landing FAQs: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.landing_faqs' doesn't exist
+[2026-10-04 11:47:54] [WARNING] Unable to load trust badges: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.trust_badges' doesn't exist
+[2026-10-04 11:48:04] [WARNING] Unable to load how_it_works steps: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.how_it_works' doesn't exist
+[2026-10-04 11:48:08] [WARNING] Unable to load roadmap items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.roadmap_items' doesn't exist
+[2026-10-04 11:48:08] [WARNING] Unable to load personas: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.personas' doesn't exist
+[2026-10-04 11:48:10] [WARNING] Unable to load gallery items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.gallery_items' doesn't exist
+[2026-10-04 11:48:11] [WARNING] Unable to load spotlight items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.spotlight_items' doesn't exist
+[2026-10-04 11:48:12] [WARNING] Unable to load why features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.why_features' doesn't exist
+[2026-10-04 11:48:13] [WARNING] Unable to load about features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.about_features' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load testimonials: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.testimonials' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load landing FAQs: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.landing_faqs' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load trust badges: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.trust_badges' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load how_it_works steps: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.how_it_works' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load roadmap items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.roadmap_items' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load personas: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.personas' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load gallery items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.gallery_items' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load spotlight items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.spotlight_items' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load why features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.why_features' doesn't exist
+[2026-10-04 11:48:56] [WARNING] Unable to load about features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.about_features' doesn't exist
+[2026-10-04 11:54:01] [WARNING] Unable to load testimonials: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.testimonials' doesn't exist
+[2026-10-04 11:54:01] [WARNING] Unable to load landing FAQs: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.landing_faqs' doesn't exist
+[2026-10-04 11:54:01] [WARNING] Unable to load trust badges: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.trust_badges' doesn't exist
+[2026-10-04 11:54:02] [WARNING] Unable to load how_it_works steps: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.how_it_works' doesn't exist
+[2026-10-04 11:54:02] [WARNING] Unable to load roadmap items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.roadmap_items' doesn't exist
+[2026-10-04 11:54:02] [WARNING] Unable to load personas: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.personas' doesn't exist
+[2026-10-04 11:54:02] [WARNING] Unable to load gallery items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.gallery_items' doesn't exist
+[2026-10-04 11:54:03] [WARNING] Unable to load spotlight items: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.spotlight_items' doesn't exist
+[2026-10-04 11:54:03] [WARNING] Unable to load why features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.why_features' doesn't exist
+[2026-10-04 11:54:03] [WARNING] Unable to load about features: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'ctechlit_systems.about_features' doesn't exist

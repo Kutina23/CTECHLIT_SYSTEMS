@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" width="400" height="80">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7C4DFF"/>
+      <stop offset="50%" stop-color="#2FD9EE"/>
+      <stop offset="100%" stop-color="#B43FE0"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Logo Mark: Stylized "C" with circuit nodes -->
+  <g transform="translate(8, 8)">
+    <!-- Outer ring -->
+    <circle cx="28" cy="28" r="24" fill="none" stroke="url(#logoGrad)" stroke-width="3" opacity="0.9"/>
+    <!-- Inner circuit path -->
+    <path d="M28 8 L28 20 L40 20" fill="none" stroke="#2FD9EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M28 36 L28 48 L16 48" fill="none" stroke="#7C4DFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Nodes -->
+    <circle cx="28" cy="8" r="3" fill="#2FD9EE" filter="url(#glow)"/>
+    <circle cx="40" cy="20" r="3" fill="#7C4DFF" filter="url(#glow)"/>
+    <circle cx="28" cy="48" r="3" fill="#B43FE0" filter="url(#glow)"/>
+    <circle cx="16" cy="48" r="3" fill="#2FD9EE" filter="url(#glow)"/>
+    <!-- Center dot -->
+    <circle cx="28" cy="28" r="4" fill="url(#logoGrad)"/>
+  </g>
+  
+  <!-- Brand Text -->
+  <text x="72" y="38" font-family="'Space Grotesk', sans-serif" font-weight="700" font-size="22" fill="#F4F2FC">
+    CTECHLIT<tspan font-weight="400" fill="#A79FC9">&</tspan>SYSTEMS
+  </text>
+  
+  <!-- Tagline -->
+  <text x="72" y="56" font-family="'IBM Plex Sans', sans-serif" font-weight="400" font-size="9" fill="#2FD9EE" letter-spacing="1.5">
+    INTERNET CAFÉ & DIGITAL SERVICES
+  </text>
+</svg>

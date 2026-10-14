@@ -1,0 +1,6 @@
+[2026-09-27 16:48:45] [WARNING] Unable to load public settings: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-09-27 16:48:47] [WARNING] Unable to load services: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-09-27 16:48:49] [WARNING] Unable to load pricing plans: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-09-27 16:48:51] [WARNING] Unable to load stations: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-09-27 16:48:53] [WARNING] Unable to load station stats: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[2026-09-27 16:48:55] [WARNING] Unable to load live stats: Database connection failed: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it

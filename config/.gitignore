@@ -1,0 +1,7 @@
+# Environment files (contain sensitive credentials)
+.env
+.env.local
+.env.production
+
+# Cache files
+*.cache
