@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // command-line only
 /**
  * Personal-device billing (auto-renew, server-side metering) and online payment intents (Paystack).
  * Idempotent: safe to run more than once.

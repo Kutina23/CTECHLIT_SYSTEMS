@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // command-line only
 /**
  * Add scheduled expiry timestamps to station sessions.
  *

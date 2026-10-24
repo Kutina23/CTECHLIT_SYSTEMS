@@ -18,29 +18,52 @@ $error = '';
 $success = '';
 
 // Handle login POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = sanitize($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $remember = isset($_POST['remember']);
+// Brute-force limits: per account and per network address, over a 15-minute window.
+const LOGIN_WINDOW = 900;
+const LOGIN_MAX_PER_ACCOUNT = 5;
+const LOGIN_MAX_PER_IP = 20;
 
-    if (empty($email) || empty($password)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
+    $password = (string) ($_POST['password'] ?? '');
+    $remember = isset($_POST['remember']);
+    $ip = getClientIp();
+    $accountKey = 'login:account:' . $email;
+    $ipKey = 'login:ip:' . $ip;
+
+    if (!verifyCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
+        $error = 'Your sign-in form expired. Please try again.';
+    } elseif ($email === '' || $password === '') {
         $error = 'Please enter both email and password.';
-    } elseif (!isValidEmail($email)) {
+    } elseif (!isValidEmail($email) || strlen($password) > 1024) {
         $error = 'Please enter a valid email address.';
+    } elseif (throttleCount($accountKey, LOGIN_WINDOW) >= LOGIN_MAX_PER_ACCOUNT || throttleCount($ipKey, LOGIN_WINDOW) >= LOGIN_MAX_PER_IP) {
+        $error = 'Too many sign-in attempts. Please wait 15 minutes and try again, or ask an administrator to reset your password.';
+        logAuditTrail('staff_login_blocked', 'staff', null, ['email' => mb_substr($email, 0, 120), 'ip' => $ip]);
     } else {
-        // Look up staff by email
         $staff = Database::fetchOne(
-            "SELECT staff_id, email, password_hash, full_name, role, is_active FROM staff WHERE email = ?",
+            "SELECT staff_id, email, password_hash, full_name, role, is_active FROM staff WHERE LOWER(email) = ?",
             [$email]
         );
+        // Always run one bcrypt check so response time does not reveal whether the account exists.
+        $hash = $staff['password_hash'] ?? '$2y$12$EvBMh/eTr/CAMH9698rnC.jffI.clCuCDj0SmhIo7IiyZvXjEMEGu';
+        $passwordOk = verifyPassword($password, (string) $hash) && $staff;
 
-        if (!$staff) {
-            $error = 'Invalid email or password.';
+        if (!$passwordOk) {
+            throttleHit($accountKey, LOGIN_WINDOW);
+            throttleHit($ipKey, LOGIN_WINDOW);
+            logAuditTrail('staff_login_failed', 'staff', $staff ? (int) $staff['staff_id'] : null, ['email' => mb_substr($email, 0, 120), 'ip' => $ip]);
+            $left = LOGIN_MAX_PER_ACCOUNT - throttleCount($accountKey, LOGIN_WINDOW);
+            $error = 'Invalid email or password.' . ($left > 0 && $left <= 2 ? " $left attempt" . ($left === 1 ? '' : 's') . ' left before sign-in is paused.' : '');
+            usleep(random_int(150000, 350000));
         } elseif (!$staff['is_active']) {
             $error = 'Your account has been deactivated. Please contact an administrator.';
-        } elseif (!verifyPassword($password, $staff['password_hash'])) {
-            $error = 'Invalid email or password.';
         } else {
+                throttleClear($accountKey);
+                // Upgrade old password hashes to the current cost/algorithm.
+                if (password_needs_rehash((string) $staff['password_hash'], PASSWORD_BCRYPT, ['cost' => $GLOBALS['config']['security']['bcrypt_cost'] ?? 12])) {
+                    Database::execute('UPDATE staff SET password_hash = ? WHERE staff_id = ?', [hashPassword($password), $staff['staff_id']]);
+                }
                 // Successful login
                 loginUser((int) $staff['staff_id'], 'staff', $remember);
 
@@ -507,6 +530,7 @@ $currentPage = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
             </div>
 
             <form method="POST" action="" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="<?php echo sanitize(generateCsrfToken()); ?>">
                 <!-- Email -->
                 <div class="form-group">
                     <label class="form-label" for="email">Email Address</label>

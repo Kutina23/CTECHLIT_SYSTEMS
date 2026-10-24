@@ -16,11 +16,37 @@ require_once __DIR__ . '/config.php';
 // Set timezone
 date_default_timezone_set($GLOBALS['config']['app']['timezone'] ?? 'UTC');
 
+/** True when the request reached us over HTTPS (directly or via a trusted TLS-terminating proxy). */
+function requestIsHttps(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+    return isTrustedProxy() && strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+}
+
+/** Is the direct peer one of the proxies listed in TRUSTED_PROXIES (comma-separated IPs, or "*")? */
+function isTrustedProxy(): bool
+{
+    $list = trim((string) ($_ENV['TRUSTED_PROXIES'] ?? getenv('TRUSTED_PROXIES') ?: ''));
+    if ($list === '') {
+        return false;
+    }
+    if ($list === '*') {
+        return true;
+    }
+    return in_array($_SERVER['REMOTE_ADDR'] ?? '', array_map('trim', explode(',', $list)), true);
+}
+
 // Start session with secure settings
-if (session_status() === PHP_SESSION_NONE) {
+if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
+    ini_set('session.use_strict_mode', '1');      // never adopt a session ID the server did not issue
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
     ini_set('session.cookie_httponly', '1');
-    ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) ? '1' : '0');
+    ini_set('session.cookie_secure', requestIsHttps() ? '1' : '0');
     ini_set('session.cookie_samesite', 'Strict');
+    // Session ID length is left at PHP's default (128 bits of randomness); the sid_* settings are deprecated in PHP 8.4.
     ini_set('session.gc_maxlifetime', (string) ($GLOBALS['config']['security']['session_lifetime'] ?? 7200));
     session_start();
 }
@@ -36,6 +62,11 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
     if (!(error_reporting() & $severity)) {
         return;
     }
+    // Deprecation notices (e.g. after a PHP upgrade) are logged for fixing, never turned into fatal errors.
+    if ($severity === E_DEPRECATED || $severity === E_USER_DEPRECATED) {
+        error_log('PHP deprecation: ' . $message . ' in ' . $file . ':' . $line);
+        return true;
+    }
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
@@ -45,6 +76,11 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 set_exception_handler(function (Throwable $e) {
     error_log($e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     
+    // If part of a page was already sent, the status code can no longer change — just end the page cleanly.
+    if (headers_sent()) {
+        echo '<div style="margin:16px;padding:12px 16px;border-radius:10px;background:#FEF2F2;color:#991B1B;font:14px sans-serif">Something went wrong while loading this part of the page. Please reload, or contact an administrator if it keeps happening.</div>';
+        return;
+    }
     if ($GLOBALS['config']['app']['debug'] ?? false) {
         http_response_code(500);
         echo json_encode([
@@ -272,7 +308,7 @@ function verifyPassword(string $password, string $hash): bool
 /**
  * Generate JWT token
  */
-function generateJwt(array $payload, int $expiry = null): string
+function generateJwt(array $payload, ?int $expiry = null): string
 {
     $secret = $GLOBALS['config']['security']['jwt_secret'] ?? '';
     if (empty($secret)) {
@@ -534,7 +570,7 @@ function relativeTime(string $datetime): string
 /**
  * Start of day timestamp
  */
-function startOfDay(string $date = null): int
+function startOfDay(?string $date = null): int
 {
     $date = $date ?: date('Y-m-d');
     return strtotime($date . ' 00:00:00');
@@ -543,7 +579,7 @@ function startOfDay(string $date = null): int
 /**
  * End of day timestamp
  */
-function endOfDay(string $date = null): int
+function endOfDay(?string $date = null): int
 {
     $date = $date ?: date('Y-m-d');
     return strtotime($date . ' 23:59:59');
@@ -683,7 +719,7 @@ function cacheGet(string $key, mixed $default = null): mixed
 /**
  * Set cached value
  */
-function cacheSet(string $key, mixed $value, int $ttl = null): bool
+function cacheSet(string $key, mixed $value, ?int $ttl = null): bool
 {
     $ttl = $ttl ?? ($GLOBALS['config']['cache']['ttl'] ?? 3600);
     $driver = $GLOBALS['config']['cache']['driver'] ?? 'file';
@@ -782,26 +818,91 @@ function verifyApiKey(string $apiKey, string $hash): bool
  */
 function checkRateLimit(string $key, int $maxRequests = 60, int $windowSeconds = 60): bool
 {
-    $cacheKey = "rate_limit:$key";
-    $data = cacheGet($cacheKey, ['count' => 0, 'window_start' => time()]);
+    return throttleHit($key, $windowSeconds) <= $maxRequests;
+}
 
-    $now = time();
-    if ($now - $data['window_start'] >= $windowSeconds) {
-        // Reset window
-        cacheSet($cacheKey, ['count' => 1, 'window_start' => $now], $windowSeconds);
-        return true;
+/**
+ * Count one hit against a fixed window and return the hits in the current window.
+ * Stored in MySQL so limits hold across PHP workers and servers. Fails open (returns 0)
+ * if the table is missing, so a broken limiter never locks everyone out.
+ */
+function throttleHit(string $key, int $windowSeconds): int
+{
+    $key = substr(hash('sha256', $key), 0, 64) . ':' . substr($key, 0, 100);
+    try {
+        Database::execute(
+            'INSERT INTO security_throttle (throttle_key, hits, window_start) VALUES (?, 1, NOW())
+             ON DUPLICATE KEY UPDATE
+                hits = IF(window_start < NOW() - INTERVAL ? SECOND, 1, hits + 1),
+                window_start = IF(window_start < NOW() - INTERVAL ? SECOND, NOW(), window_start)',
+            [$key, $windowSeconds, $windowSeconds]
+        );
+        if (random_int(1, 200) === 1) {
+            Database::execute('DELETE FROM security_throttle WHERE updated_at < NOW() - INTERVAL 1 DAY');
+        }
+        return (int) Database::fetchColumn('SELECT hits FROM security_throttle WHERE throttle_key = ?', [$key]);
+    } catch (Throwable $e) {
+        error_log('Rate limiter unavailable: ' . $e->getMessage());
+        return 0;
     }
+}
 
-    if ($data['count'] >= $maxRequests) {
-        return false;
+/** Hits recorded for a key in its current window (without adding one). */
+function throttleCount(string $key, int $windowSeconds): int
+{
+    $key = substr(hash('sha256', $key), 0, 64) . ':' . substr($key, 0, 100);
+    try {
+        return (int) Database::fetchColumn(
+            'SELECT hits FROM security_throttle WHERE throttle_key = ? AND window_start >= NOW() - INTERVAL ? SECOND',
+            [$key, $windowSeconds]
+        );
+    } catch (Throwable $e) {
+        return 0;
     }
+}
 
-    cacheSet($cacheKey, [
-        'count' => $data['count'] + 1,
-        'window_start' => $data['window_start']
-    ], $windowSeconds - ($now - $data['window_start']));
+function throttleClear(string $key): void
+{
+    $key = substr(hash('sha256', $key), 0, 64) . ':' . substr($key, 0, 100);
+    try {
+        Database::execute('DELETE FROM security_throttle WHERE throttle_key = ?', [$key]);
+    } catch (Throwable $e) {
+        // nothing to clear
+    }
+}
 
-    return true;
+/**
+ * Reject state-changing requests that come from another site (CSRF defence for the JSON APIs).
+ * Browsers always send Origin on cross-site POST/PUT/PATCH/DELETE; non-browser clients cannot carry
+ * the SameSite=Strict session cookie anyway.
+ */
+function enforceSameOrigin(): void
+{
+    $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+        return;
+    }
+    $source = (string) ($_SERVER['HTTP_ORIGIN'] ?? ($_SERVER['HTTP_REFERER'] ?? ''));
+    if ($source === '') {
+        return;
+    }
+    $sourceHost = strtolower((string) parse_url($source, PHP_URL_HOST));
+    $sourcePort = parse_url($source, PHP_URL_PORT);
+    $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($sourcePort) {
+        $sourceHost .= ':' . $sourcePort;
+    }
+    $allowed = [$host];
+    $appHost = parse_url((string) ($GLOBALS['config']['app']['url'] ?? ''), PHP_URL_HOST);
+    if ($appHost) {
+        $allowed[] = strtolower($appHost);
+    }
+    if ($source === 'null' || !in_array($sourceHost, $allowed, true)) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Cross-site request blocked.']);
+        exit;
+    }
 }
 
 // ============================================================
@@ -813,17 +914,16 @@ function checkRateLimit(string $key, int $maxRequests = 60, int $windowSeconds =
  */
 function getClientIp(): string
 {
-    $headers = [
-        'HTTP_CF_CONNECTING_IP',
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_X_REAL_IP',
-        'REMOTE_ADDR'
-    ];
-
-    foreach ($headers as $header) {
-        if (!empty($_SERVER[$header])) {
-            $ips = explode(',', $_SERVER[$header]);
-            return trim($ips[0]);
+    // Forwarding headers are trivially spoofed, so they are only believed when the request
+    // came through a proxy listed in TRUSTED_PROXIES (e.g. Cloudflare or a load balancer).
+    if (isTrustedProxy()) {
+        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP'] as $header) {
+            if (!empty($_SERVER[$header])) {
+                $ip = trim(explode(',', (string) $_SERVER[$header])[0]);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return $ip;
+                }
+            }
         }
     }
 
@@ -1437,11 +1537,12 @@ function getPrinterConfig(int $peripheralId): ?array
 function setPrinterConfig(int $peripheralId, string $ip, string $mac = '', string $protocol = 'ipp'): bool
 {
     $existingConfig = getPrinterConfig($peripheralId) ?? [];
-    $config = json_encode([
+    // Keep other settings (e.g. IPP port / path used by the print queue).
+    $config = json_encode(array_merge($existingConfig, [
         'ip' => $ip,
         'mac' => $mac !== '' ? $mac : ($existingConfig['mac'] ?? null),
         'protocol' => $protocol,
-    ]);
+    ]));
     $updated = Database::execute(
         "UPDATE peripherals SET config = ?, updated_at = NOW() WHERE peripheral_id = ?",
         [$config, $peripheralId]
@@ -1869,7 +1970,107 @@ function siteTestimonials(): array
 /**
  * Published FAQs for the FAQ section.
  */
-function siteFaqs(): array
+/**
+ * Any system setting (public or private), cached per request.
+ */
+function systemSetting(string $key, string $default = ''): string
+{
+    static $all = null;
+    if ($all === null) {
+        $all = [];
+        try {
+            foreach (Database::fetchAll('SELECT setting_key, setting_value FROM system_settings') as $row) {
+                $all[$row['setting_key']] = (string) $row['setting_value'];
+            }
+        } catch (Throwable $e) {
+            $all = [];
+        }
+    }
+    $value = $all[$key] ?? null;
+    return ($value === null || $value === '') ? $default : $value;
+}
+
+/** Stop a new station session when the "maximum concurrent sessions" limit is reached (0 = no limit). */
+function assertSessionCapacity(): void
+{
+    $limit = (int) systemSetting('max_concurrent_sessions', '0');
+    if ($limit <= 0) {
+        return;
+    }
+    $active = (int) Database::fetchColumn("SELECT COUNT(*) FROM sessions WHERE status = 'active'");
+    if ($active >= $limit) {
+        throw new InvalidArgumentException("The limit of $limit active sessions is reached. End a session first, or raise the limit in Settings.");
+    }
+}
+
+/** Are sales without a named customer allowed? (Settings → Pricing & operations) */
+function walkInsAllowed(): bool
+{
+    return systemSetting('allow_walkins', 'true') !== 'false';
+}
+
+/**
+ * Open/closed status from the free-text opening_hours setting, e.g. "Monday – Saturday, 8:00 AM – 9:00 PM".
+ * Returns null when the text cannot be understood (the homepage then just shows the text).
+ */
+function siteOpenStatus(?string $hours = null, ?DateTimeImmutable $now = null): ?array
+{
+    $hours = $hours ?? siteSetting('opening_hours', '');
+    $now = $now ?? new DateTimeImmutable('now');
+    $days = ['mon' => 1, 'tue' => 2, 'wed' => 3, 'thu' => 4, 'fri' => 5, 'sat' => 6, 'sun' => 7];
+    $dayPattern = '(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?';
+    $text = strtolower(str_replace(['–', '—', ' to '], '-', $hours));
+    if (!preg_match('/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/', $text, $t)) {
+        return null;
+    }
+    $openDays = [1, 2, 3, 4, 5, 6, 7];
+    if (preg_match('/' . $dayPattern . '\s*-\s*' . $dayPattern . '/', $text, $d)) {
+        $from = $days[$d[1]];
+        $to = $days[$d[2]];
+        $openDays = [];
+        for ($i = $from; ; $i = $i % 7 + 1) {
+            $openDays[] = $i;
+            if ($i === $to) {
+                break;
+            }
+        }
+    } elseif (str_contains($text, 'weekday')) {
+        $openDays = [1, 2, 3, 4, 5];
+    }
+    $toMinutes = static function (string $h, string $m, string $ampm): int {
+        $h = (int) $h % 12 + ($ampm === 'pm' ? 12 : 0);
+        if ($ampm === '' && (int) $h < 24) {
+            $h = (int) $h;
+        }
+        return $h * 60 + (int) ($m ?: 0);
+    };
+    $open = $toMinutes($t[1], $t[2] ?? '', $t[3] ?? '');
+    $close = $toMinutes($t[4], $t[5] ?? '', ($t[6] ?? '') ?: (($t[3] ?? '') === 'am' ? 'pm' : ($t[3] ?? '')));
+    if ($close <= $open) {
+        return null;
+    }
+    $minute = (int) $now->format('G') * 60 + (int) $now->format('i');
+    $isOpenDay = in_array((int) $now->format('N'), $openDays, true);
+    $fmt = static fn(int $m) => date('g:i A', mktime(intdiv($m, 60), $m % 60));
+    if ($isOpenDay && $minute >= $open && $minute < $close) {
+        return ['open' => true, 'label' => 'Open now', 'detail' => 'Closes ' . $fmt($close)];
+    }
+    if ($isOpenDay && $minute < $open) {
+        return ['open' => false, 'label' => 'Closed now', 'detail' => 'Opens today at ' . $fmt($open)];
+    }
+    for ($i = 1; $i <= 7; $i++) {
+        $day = $now->modify("+$i day");
+        if (in_array((int) $day->format('N'), $openDays, true)) {
+            return ['open' => false, 'label' => 'Closed now', 'detail' => 'Opens ' . ($i === 1 ? 'tomorrow' : $day->format('l')) . ' at ' . $fmt($open)];
+        }
+    }
+    return null;
+}
+
+/**
+ * Published FAQs. Help-center FAQs (written for staff using the portal) are only merged in when asked for.
+ */
+function siteFaqs(bool $includeHelpCenter = false): array
 {
     $faqs = [];
     try {
@@ -1883,7 +2084,7 @@ function siteFaqs(): array
         logWarning('Unable to load landing FAQs: ' . $e->getMessage());
     }
 
-    if (!Database::tableExists('help_resources')) {
+    if (!$includeHelpCenter || !Database::tableExists('help_resources')) {
         return $faqs;
     }
 

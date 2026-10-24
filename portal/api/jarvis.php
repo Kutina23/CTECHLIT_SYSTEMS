@@ -281,6 +281,8 @@ function executeJarvisOperation(array $operation): array
         'Accept: application/json',
         'X-Requested-With: XMLHttpRequest',
         'Cookie: ' . session_name() . '=' . session_id(),
+        // Same browser identity as the signed-in user, so the session's browser binding still matches.
+        'User-Agent: ' . str_replace(["\r", "\n"], '', getUserAgent()),
     ];
     $curlOptions = [
         CURLOPT_RETURNTRANSFER => true,

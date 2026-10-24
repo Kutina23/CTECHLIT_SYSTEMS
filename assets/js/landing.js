@@ -167,15 +167,20 @@ document.querySelectorAll('.stagger-text').forEach(el=>staggerIO.observe(el));
   }catch(e){ console.warn('3D background unavailable', e); }
 })();
 
-// FAQ accordion
+// FAQ accordion (one open at a time; the question is a real button for keyboard/screen readers)
 document.querySelectorAll('.faq-item').forEach(item=>{
-  item.addEventListener('click', ()=>{
+  const trigger = item.querySelector('.faq-question');
+  if(!trigger) return;
+  trigger.addEventListener('click', ()=>{
     const isActive = item.classList.contains('active');
-    // Close all others
-    document.querySelectorAll('.faq-item').forEach(i=>i.classList.remove('active'));
-    // Toggle current
+    document.querySelectorAll('.faq-item').forEach(i=>{
+      i.classList.remove('active');
+      const q = i.querySelector('.faq-question');
+      if(q) q.setAttribute('aria-expanded', 'false');
+    });
     if(!isActive){
       item.classList.add('active');
+      trigger.setAttribute('aria-expanded', 'true');
     }
   });
 });
@@ -358,4 +363,82 @@ document.querySelectorAll('.faq-item').forEach(item=>{
     updateCarousel(false);
     startAuto();
   });
+})();
+
+
+// ---------- Homepage refresh: section highlighting, filters, tabs, back-to-top ----------
+(function(){
+  // Highlight the nav link for the section in view.
+  const spyLinks = Array.from(document.querySelectorAll('.navlinks a[data-spy]'));
+  const targets = spyLinks.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  if ('IntersectionObserver' in window && targets.length) {
+    const spy = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        spyLinks.forEach(a => {
+          const on = a.getAttribute('href') === '#' + entry.target.id;
+          a.classList.toggle('active', on);
+          if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+        });
+      });
+    }, {rootMargin: '-45% 0px -50% 0px'});
+    targets.forEach(t => spy.observe(t));
+  }
+
+  // Close the mobile menu after choosing a section.
+  const menu = document.getElementById('primaryNav');
+  const burger = document.querySelector('#nav .hamburger');
+  if (menu && burger) {
+    menu.addEventListener('click', e => {
+      if (e.target.closest('a[href^="#"]') && menu.classList.contains('open')) burger.click();
+    });
+  }
+
+  // Service category filter.
+  const chips = document.querySelectorAll('.filter-chips .chip');
+  chips.forEach(chip => chip.addEventListener('click', () => {
+    const filter = chip.dataset.filter;
+    chips.forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
+    document.querySelectorAll('#serviceGrid .svc-card').forEach(card => {
+      const show = filter === 'all' || card.dataset.category === filter;
+      card.classList.toggle('is-hidden', !show);
+      if (show) card.classList.add('in');
+    });
+  }));
+
+  // Pricing tabs (arrow keys move between tabs).
+  const tabs = Array.from(document.querySelectorAll('.seg-tabs [role="tab"]'));
+  if (tabs.length) {
+    document.body.classList.add('has-price-tabs');
+    const select = tab => {
+      tabs.forEach(t => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) {
+          panel.hidden = !on;
+          if (on) panel.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+        }
+      });
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => select(tab));
+      tab.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        select(next);
+        next.focus();
+      });
+    });
+    select(tabs[0]);
+  }
+
+  // Back-to-top button.
+  const toTop = document.querySelector('.to-top');
+  if (toTop) {
+    const update = () => toTop.classList.toggle('show', window.scrollY > 900);
+    window.addEventListener('scroll', update, {passive: true});
+    update();
+  }
 })();

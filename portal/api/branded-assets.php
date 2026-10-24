@@ -250,10 +250,8 @@ try {
             if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $fileName)) {
                 throw new RuntimeException('The logo could not be stored.');
             }
+            // Previous logo files are kept (not deleted) so a replaced logo can always be restored.
             $kit = brandKit();
-            if ($kit['logo'] && is_file($dir . '/' . basename((string) $kit['logo']))) {
-                @unlink($dir . '/' . basename((string) $kit['logo']));
-            }
             $kit['logo'] = $fileName;
             saveBrandKit($kit);
             logAuditTrail('brand_logo_uploaded', 'brand_kit', null, ['file' => $fileName, 'width' => $info[0], 'height' => $info[1]]);
@@ -262,10 +260,8 @@ try {
         case 'remove_logo':
             requirePermission('branded_assets.edit');
             $kit = brandKit();
-            if ($kit['logo']) {
-                @unlink(__DIR__ . '/../../uploads/branding/' . basename((string) $kit['logo']));
-            }
-            $kit['logo'] = null;
+            $kit['logo'] = null; // the file stays in uploads/branding so it can be restored
+            logAuditTrail('brand_logo_removed', 'brand_kit', null, []);
             saveBrandKit($kit);
             successResponse(brandKit(), 'Logo removed');
 

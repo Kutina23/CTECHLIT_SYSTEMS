@@ -31,6 +31,7 @@ try {
             break;
 
         case 'POST':
+            requirePermission('services.create');
             validateRequired($input, ['name', 'category', 'base_price', 'price_unit']);
             
             $serviceId = Database::insert(
@@ -53,6 +54,7 @@ try {
             break;
 
         case 'PUT':
+            requirePermission('services.edit');
             validateRequired($input, ['service_id']);
             
             $updates = [];
@@ -76,6 +78,7 @@ try {
             break;
 
         case 'DELETE':
+            requirePermission('services.delete');
             validateRequired($input, ['service_id']);
             Database::execute("DELETE FROM services WHERE service_id = ?", [$input['service_id']]);
             successResponse(null, 'Service deleted successfully');

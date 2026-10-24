@@ -78,7 +78,13 @@ try {
             
             $targetStaff = Database::fetchOne("SELECT role FROM staff WHERE staff_id = ?", [$staffId]);
             if (!$targetStaff) errorResponse('Staff not found', 404);
-            
+
+            // Nobody but an administrator may change their own permissions or another administrator's.
+            if (!currentStaffIsAdmin() && $staffId === (int) $_SESSION['user_id']) {
+                errorResponse('You cannot change your own permissions. Ask an administrator.', 403);
+            }
+            assertCanManageStaffAccount($targetStaff['role']);
+
             // Admin/CEO access is unconditional; individual permission sets apply to non-admin staff.
             if (in_array($targetStaff['role'], ['admin', 'ceo'], true)) {
                 Database::execute(
@@ -107,6 +113,19 @@ try {
                     errorResponse('The permission list contains an invalid permission.');
                 }
                 $permissionSet[$permission] = true;
+            }
+
+            // Non-administrators can only hand out permissions they hold themselves,
+            // and never "all permissions" or the right to assign permissions.
+            if (!currentStaffIsAdmin()) {
+                if ($hasWildcard || isset($permissionSet['staff.assign_permissions'])) {
+                    errorResponse('Only an administrator can grant full access or the right to assign permissions.', 403);
+                }
+                foreach (array_keys($permissionSet) as $permission) {
+                    if (!hasPermission($permission)) {
+                        errorResponse('You can only grant permissions you have yourself (' . $permission . ').', 403);
+                    }
+                }
             }
 
             Database::beginTransaction();

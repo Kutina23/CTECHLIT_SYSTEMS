@@ -233,6 +233,56 @@ function billingSettleTransaction(int $transactionId, string $method, ?string $r
 }
 
 /**
+ * Reverse a charge in full.
+ *  - unpaid (pending, not invoiced) → voided, nothing is owed
+ *  - paid from the wallet           → credited back to the wallet
+ *  - paid by cash/MoMo/card/bank    → recorded as refunded (staff return the money)
+ */
+function billingRefundTransaction(int $transactionId, string $reason, string $reasonCode = 'service_issue'): array
+{
+    return billingAtomic(function () use ($transactionId, $reason, $reasonCode) {
+        $tx = Database::fetchOne('SELECT * FROM transactions WHERE transaction_id = ? FOR UPDATE', [$transactionId]);
+        if (!$tx) {
+            throw new InvalidArgumentException('Charge not found.');
+        }
+        $amount = billingMoney((float) $tx['total_amount']);
+        if ($tx['status'] === 'pending') {
+            if ($tx['invoice_id']) {
+                throw new InvalidArgumentException('This charge is on an invoice. Void the invoice first.');
+            }
+            Database::execute(
+                "UPDATE transactions SET status = 'failed', notes = CONCAT(COALESCE(notes, ''), ?) WHERE transaction_id = ?",
+                [' — cancelled: ' . mb_substr($reason, 0, 150), $transactionId]
+            );
+            return ['mode' => 'voided', 'amount' => $amount, 'message' => 'The unpaid charge was cancelled.'];
+        }
+        if ($tx['status'] !== 'completed') {
+            return ['mode' => 'none', 'amount' => 0, 'message' => 'Nothing to refund (charge is ' . $tx['status'] . ').'];
+        }
+        $method = (string) ($tx['payment_method'] ?? '');
+        if ($method === 'wallet') {
+            billingPostLedger((int) $tx['user_id'], 'refund', $amount, 'Refund: ' . mb_substr($reason, 0, 200), ['transaction_id' => $transactionId, 'payment_method' => 'wallet']);
+        }
+        if (refundsTableExists()) {
+            Database::insert(
+                'INSERT INTO transaction_refunds (transaction_id, amount, reason, notes, payment_method, processed_by) VALUES (?, ?, ?, ?, ?, ?)',
+                [$transactionId, $amount, $reasonCode, mb_substr($reason, 0, 500),
+                    in_array($method, ['cash', 'mobile_money', 'card', 'bank_transfer'], true) ? $method : 'other', billingStaffId()]
+            );
+        }
+        Database::execute("UPDATE transactions SET status = 'refunded' WHERE transaction_id = ?", [$transactionId]);
+        Database::execute('UPDATE users SET total_spent = GREATEST(0, total_spent - ?) WHERE user_id = ?', [$amount, $tx['user_id']]);
+        return [
+            'mode' => $method === 'wallet' ? 'wallet' : 'refunded',
+            'amount' => $amount,
+            'message' => $method === 'wallet'
+                ? number_format($amount, 2) . ' returned to the customer\'s wallet.'
+                : 'Refund of ' . number_format($amount, 2) . ' recorded — return it by ' . str_replace('_', ' ', $method ?: 'cash') . '.',
+        ];
+    });
+}
+
+/**
  * Invoice custom line items (not from existing charges), e.g. a typing or design job.
  */
 function billingCreateManualInvoice(int $userId, array $items, int $dueDays = 0, float $discount = 0.0, string $notes = ''): array

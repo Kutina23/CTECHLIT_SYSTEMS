@@ -233,6 +233,7 @@ try {
                 if ($busy) {
                     throw new InvalidArgumentException("{$station['station_code']} is in use by {$busy['full_name']}.");
                 }
+                assertSessionCapacity();
                 $sessionId = Database::insert(
                     "INSERT INTO sessions (user_id, station_id, staff_id, status, started_at, scheduled_end_at, notes)
                      VALUES (?, ?, ?, 'active', NOW(), IF(? > 0, DATE_ADD(NOW(), INTERVAL ? MINUTE), NULL), ?)",

@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // command-line only
 /**
  * Brand Studio: business-card designs, shared brand kit setting, protected logo folder.
  * Idempotent: safe to run more than once.

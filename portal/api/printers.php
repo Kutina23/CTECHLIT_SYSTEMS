@@ -34,6 +34,7 @@ try {
         case 'POST':
             $action = $_GET['action'] ?? '';
             
+            requirePermission(in_array($action, ['test', 'wake'], true) ? 'printers.view' : 'printers.edit');
             if ($action === 'test') {
                 validateRequired($input, ['peripheral_id']);
                 $result = testPrinterConnection((int) $input['peripheral_id']);
@@ -88,6 +89,7 @@ try {
             break;
 
         case 'PUT':
+            requirePermission('printers.edit');
             validateRequired($input, ['peripheral_id', 'ip_address', 'mac_address']);
             $result = setPrinterConfig(
                 (int) $input['peripheral_id'],

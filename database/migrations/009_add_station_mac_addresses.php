@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // command-line only
 /**
  * CTECHLIT & SYSTEMS — Migration: Add MAC addresses to existing stations
  * 

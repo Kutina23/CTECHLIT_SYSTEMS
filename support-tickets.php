@@ -26,6 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['public_ticket_submitted'] = true;
         header('Location: support-tickets.php');
         exit;
+    } elseif (!checkRateLimit('public:ticket:' . getClientIp(), 5, 3600)) {
+        $formError = 'Too many submissions from your network. Please try again in an hour, or contact us by phone.';
     } elseif (time() - (int) ($_SESSION['public_ticket_last_submission'] ?? 0) < 30) {
         $formError = 'Please wait a short time before submitting another ticket.';
     } elseif (

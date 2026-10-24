@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; } // command-line only
 /**
  * Create personal_devices and device_usage_events tables for BYOD / hotspot management.
  *

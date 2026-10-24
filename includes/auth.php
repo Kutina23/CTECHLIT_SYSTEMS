@@ -17,7 +17,60 @@ require_once __DIR__ . '/../config/functions.php';
  */
 function isAuthenticated(): bool
 {
-    return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+    if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+        return false;
+    }
+    static $checked = false;
+    if (!$checked) {
+        $checked = true;
+        if (!sessionIsFresh()) {
+            endSession();
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Enforce idle and absolute session lifetimes and drop sessions of staff who were deactivated.
+ * Idle limit = SESSION_LIFETIME (default 2 h); absolute limit = SESSION_MAX_AGE (default 14 h, one working day).
+ */
+function sessionIsFresh(): bool
+{
+    $now = time();
+    // Staff idle sign-out: Settings → Security overrides SESSION_LIFETIME from config/.env.
+    $idleMinutes = (int) systemSetting('session_timeout_minutes', '0');
+    $idle = $idleMinutes >= 5 ? $idleMinutes * 60 : max(300, (int) ($GLOBALS['config']['security']['session_lifetime'] ?? 7200));
+    $maxAge = max($idle, (int) ($_ENV['SESSION_MAX_AGE'] ?? 50400));
+    $loggedInAt = (int) ($_SESSION['logged_in_at'] ?? 0);
+    $lastActivity = (int) ($_SESSION['last_activity'] ?? $loggedInAt);
+    if (!empty($_SESSION['remember'])) {
+        $idle = $maxAge;
+    }
+    if ($loggedInAt === 0 || $now - $lastActivity > $idle || $now - $loggedInAt > $maxAge) {
+        return false;
+    }
+    // A stolen cookie replayed from a different browser is rejected.
+    if (isset($_SESSION['ua_hash']) && !hash_equals($_SESSION['ua_hash'], hash('sha256', getUserAgent()))) {
+        return false;
+    }
+    if (($_SESSION['user_type'] ?? '') === 'staff' && $now - (int) ($_SESSION['active_checked_at'] ?? 0) > 60) {
+        $active = Database::fetchColumn('SELECT is_active FROM staff WHERE staff_id = ?', [(int) $_SESSION['user_id']]);
+        if (!$active) {
+            return false;
+        }
+        $_SESSION['active_checked_at'] = $now;
+    }
+    $_SESSION['last_activity'] = $now;
+    return true;
+}
+
+function endSession(): void
+{
+    $_SESSION = [];
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
 }
 
 /**
@@ -85,6 +138,7 @@ function sendJsonAuthError(): void
  */
 function requireAuth(string $redirect = '/login.php'): void
 {
+    enforceSameOrigin();
     if (!isAuthenticated()) {
         if (isAjaxRequest()) {
             sendJsonAuthError();
@@ -98,7 +152,8 @@ function requireAuth(string $redirect = '/login.php'): void
  */
 function requireStaffAuth(string $redirect = '/login.php'): void
 {
-    if (!isAuthenticated() || $_SESSION['user_type'] !== 'staff') {
+    enforceSameOrigin();
+    if (!isAuthenticated() || ($_SESSION['user_type'] ?? '') !== 'staff') {
         if (isAjaxRequest()) {
             sendJsonAuthError();
         }
@@ -111,16 +166,29 @@ function requireStaffAuth(string $redirect = '/login.php'): void
  */
 function loginUser(int $userId, string $userType = 'user', bool $remember = false): void
 {
+    // New session ID on every login (prevents session fixation); old session data is discarded.
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+    $_SESSION = [];
     $_SESSION['user_id'] = $userId;
     $_SESSION['user_type'] = $userType;
     $_SESSION['logged_in_at'] = time();
+    $_SESSION['last_activity'] = time();
+    $_SESSION['active_checked_at'] = time();
     $_SESSION['ip_address'] = getClientIp();
     $_SESSION['user_agent'] = getUserAgent();
-
+    $_SESSION['ua_hash'] = hash('sha256', getUserAgent());
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    // "Remember me" keeps the session open for the full working day instead of the idle limit.
     if ($remember) {
-        $token = randomString(64);
-        setcookie('remember_token', $token, time() + (30 * 24 * 60 * 60), '/', '', isset($_SERVER['HTTPS']), true);
-        // Store token in database for verification
+        $_SESSION['remember'] = true;
+        $params = session_get_cookie_params();
+        setcookie(session_name(), session_id(), [
+            'expires' => time() + (int) ($_ENV['SESSION_MAX_AGE'] ?? 50400),
+            'path' => $params['path'], 'domain' => $params['domain'],
+            'secure' => $params['secure'], 'httponly' => true, 'samesite' => 'Strict',
+        ]);
     }
 
     // Update last login
@@ -156,6 +224,9 @@ function logout(): void
     $_SESSION = [];
     if (isset($_COOKIE['remember_token'])) {
         setcookie('remember_token', '', time() - 3600, '/');
+    }
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
     }
     session_destroy();
 }
@@ -354,6 +425,48 @@ function hasPermission(string $permission): bool
         return true;
     }
     return in_array($permission, $permissions, true);
+}
+
+/** Is the signed-in staff member an administrator (role admin or ceo)? */
+function currentStaffIsAdmin(): bool
+{
+    $staff = currentStaff();
+    return $staff !== null && in_array(strtolower((string) $staff['role']), ['admin', 'ceo'], true);
+}
+
+/**
+ * Guard staff-account changes against privilege escalation:
+ * only administrators may create/edit administrators or hand out the admin/ceo role.
+ */
+function assertCanManageStaffAccount(?string $targetRole, ?string $newRole = null): void
+{
+    $privileged = ['admin', 'ceo'];
+    if (currentStaffIsAdmin()) {
+        // Only the CEO can create or modify another CEO.
+        $me = strtolower((string) (currentStaff()['role'] ?? ''));
+        if ($me !== 'ceo' && (strtolower((string) $targetRole) === 'ceo' || strtolower((string) $newRole) === 'ceo')) {
+            errorResponse('Only the CEO can change a CEO account.', 403);
+        }
+        return;
+    }
+    if (in_array(strtolower((string) $targetRole), $privileged, true) || in_array(strtolower((string) $newRole), $privileged, true)) {
+        errorResponse('Only an administrator can create or change administrator accounts.', 403);
+    }
+}
+
+/** Minimum password policy for staff accounts. Returns an error message or null. */
+function staffPasswordProblem(string $password): ?string
+{
+    if (strlen($password) < 10) {
+        return 'Use a password of at least 10 characters.';
+    }
+    if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
+        return 'Use a password with both letters and numbers.';
+    }
+    if (preg_match('/^(password|letmein|qwerty|admin|welcome|12345)/i', $password)) {
+        return 'That password is too easy to guess.';
+    }
+    return null;
 }
 
 /**

@@ -362,9 +362,9 @@ function transactionStatusClass(string $status): string
         <div>
           <label class="form-label" for="refund_amount">Refund amount</label>
           <input id="refund_amount" name="refund_amount" type="number" step="0.01" min="0.01"
-                 max="<?php echo htmlspecialchars((string) $refundable, ENT_QUOTES); ?>"
-                 value="<?php echo htmlspecialchars((string) $refundable, ENT_QUOTES); ?>" required>
-          <div class="form-hint">Maximum refundable <?php echo sanitize(money($refundable)); ?></div>
+                 max="${refundable.toFixed(2)}"
+                 value="${refundable.toFixed(2)}" required>
+          <div class="form-hint">Maximum refundable ${escapeHtml(money(refundable))}</div>
         </div>
 
         <div>

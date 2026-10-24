@@ -27,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['public_feedback_submitted'] = true;
         header('Location: feedback.php');
         exit;
+    } elseif (!checkRateLimit('public:feedback:' . getClientIp(), 5, 3600)) {
+        $formError = 'Too many submissions from your network. Please try again in an hour, or contact us by phone.';
     } elseif (time() - (int) ($_SESSION['public_feedback_last_submission'] ?? 0) < 30) {
         $formError = 'Please wait a short time before submitting more feedback.';
     } elseif (

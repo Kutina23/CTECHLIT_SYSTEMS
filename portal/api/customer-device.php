@@ -30,6 +30,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     customerDeviceRespond([], 204);
 }
 
+// Public endpoint: cap requests per address so it cannot be used to enumerate devices or flood the server.
+if (function_exists('checkRateLimit') && !checkRateLimit('public:device:' . getClientIp(), 120, 60)) {
+    customerDeviceRespond(['success' => false, 'message' => 'Too many requests. Please slow down.'], 429);
+}
+
 $hex = strtoupper(preg_replace('/[^0-9A-Fa-f]/', '', (string) ($_GET['mac'] ?? '')));
 if (strlen($hex) !== 12) {
     customerDeviceRespond(['success' => false, 'message' => 'A valid mac parameter is required'], 400);

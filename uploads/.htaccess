@@ -1,0 +1,17 @@
+# Uploaded files are data, never code.
+Options -Indexes -ExecCGI
+RemoveHandler .php .phtml .phar .php5 .php7 .php8 .pl .py .cgi .sh
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+
+# Block anything a browser could run as script on this site.
+<FilesMatch "\.(php\d?|phtml|phar|pl|py|cgi|sh|bat|exe|asp|aspx|jsp|html?|xhtml|shtml|svgz?|js|mjs|xml|xsl)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    # Even if a file is opened directly, it cannot run scripts or reach other pages.
+    Header always set Content-Security-Policy "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
+</IfModule>

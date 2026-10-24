@@ -55,6 +55,7 @@ try {
             break;
 
         case 'POST':
+            requirePermission('stations.manage');
             validateRequired($input, ['peripheral_type', 'name', 'station_id']);
             
             $peripheralId = Database::insert(
@@ -81,6 +82,7 @@ try {
             break;
 
         case 'PUT':
+            requirePermission('stations.manage');
             validateRequired($input, ['peripheral_id']);
             
             $updates = [];
@@ -110,6 +112,7 @@ try {
             break;
 
         case 'DELETE':
+            requirePermission('stations.manage');
             validateRequired($input, ['peripheral_id']);
             Database::execute("DELETE FROM peripherals WHERE peripheral_id = ?", [$input['peripheral_id']]);
             successResponse(null, 'Peripheral deleted successfully');

@@ -1,0 +1,6 @@
+# Secrets and local data
+config/.env
+cookies.txt
+logs/*.log
+uploads/print-jobs/*
+!uploads/print-jobs/.htaccess

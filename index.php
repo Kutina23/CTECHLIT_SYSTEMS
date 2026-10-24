@@ -79,7 +79,21 @@ foreach ($stations as $station) {
         $gamingFree++;
     }
 }
-$printJob = $live['latest_print_job'];
+// Only counts are shown publicly — never customers' file names or stations.
+$printQueue = 0;
+try {
+    $printQueue = (int) Database::fetchColumn("SELECT COUNT(*) FROM print_jobs WHERE status IN ('queued','printing')");
+} catch (Throwable $e) {
+    $printQueue = 0;
+}
+$openStatus = siteOpenStatus();
+$openingHours = siteSetting('opening_hours', 'Monday – Saturday');
+$serviceCategories = [];
+foreach ($services as $service) {
+    $key = (string) ($service['category'] ?? 'other');
+    $serviceCategories[$key] = ucwords(str_replace('_', ' ', $key));
+}
+$assetVersion = static fn(string $file): string => $file . '?v=' . (@filemtime(__DIR__ . '/' . $file) ?: '1');
 $brandLogo = '<svg viewBox="0 0 64 64" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#B43FE0"/></linearGradient></defs><circle cx="32" cy="32" r="30" fill="rgba(255,255,255,0.8)" stroke="url(#iconGrad)" stroke-width="2"/><path d="M38 14 L38 24 L48 24" fill="none" stroke="#2FD9EE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M26 40 L26 50 L16 50" fill="none" stroke="#7C4DFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 14 A18 18 0 0 0 26 50" fill="none" stroke="url(#iconGrad)" stroke-width="3" stroke-linecap="round"/><circle cx="38" cy="14" r="3.5" fill="#2FD9EE"/><circle cx="48" cy="24" r="3.5" fill="#7C4DFF"/><circle cx="26" cy="50" r="3.5" fill="#B43FE0"/><circle cx="16" cy="50" r="3.5" fill="#2FD9EE"/><circle cx="32" cy="32" r="5" fill="url(#iconGrad)"/><circle cx="32" cy="32" r="2" fill="#fff"/></svg>';
 
 $seoTitle = $businessName . ' — ' . $businessTagline;
@@ -98,7 +112,9 @@ $seoType = 'website';
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="assets/css/custom.css?v=2">
+<meta name="theme-color" content="#EEF2FF">
+<link rel="stylesheet" href="<?= $assetVersion('assets/css/custom.css') ?>">
+<link rel="stylesheet" href="<?= $assetVersion('assets/css/landing.css') ?>">
 <?php require __DIR__ . '/includes/seo.php'; ?>
 <?php if ($maintenanceMode): ?>
 <style>
@@ -119,8 +135,9 @@ $seoType = 'website';
 <canvas id="bg-canvas"></canvas>
 <div class="veil"></div>
 
-<nav id="nav">
-  <div class="wrap">
+<a class="skip-link" href="#services">Skip to content</a>
+<nav id="nav" aria-label="Main">
+  <div class="wrap nav-shell">
     <a href="#" class="brand">
       <svg viewBox="0 0 400 80" width="180" height="36" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -148,11 +165,11 @@ $seoType = 'website';
         <text x="72" y="50" font-family="'IBM Plex Sans', sans-serif" font-weight="400" font-size="8" fill="#2FD9EE" letter-spacing="1.2"><?= sanitize(mb_strtoupper($businessTagline)) ?></text>
       </svg>
     </a>
-    <button class="hamburger" aria-label="Menu" aria-expanded="false">
+    <button class="hamburger" aria-label="Menu" aria-expanded="false" aria-controls="primaryNav">
       <span></span><span></span><span></span>
     </button>
-    <div class="navlinks">
-      <a href="#services">Services</a><a href="#gaming">Gaming</a><a href="#pricing">Pricing</a><a href="#testimonials">Reviews</a><a href="#faq">FAQ</a><a href="#visit">Visit Us</a>
+    <div class="navlinks" id="primaryNav">
+      <a href="#services" data-spy>Services</a><a href="#gaming" data-spy>Gaming</a><a href="#pricing" data-spy>Pricing</a><a href="#testimonials" data-spy>Reviews</a><a href="#faq" data-spy>FAQ</a><a href="#visit" data-spy>Visit</a>
       <div class="help-nav-dropdown">
         <button class="help-nav-trigger" type="button" aria-expanded="false" aria-controls="publicHelpMenu">
           Help <i class="fas fa-chevron-down" aria-hidden="true"></i>
@@ -165,7 +182,10 @@ $seoType = 'website';
         </div>
       </div>
     </div>
-    <a href="<?= sanitize($mapUrl) ?>" class="btn btn-primary" target="_blank" rel="noopener">Get Directions</a>
+    <div class="nav-actions">
+      <?php if ($openStatus): ?><span class="open-pill <?= $openStatus['open'] ? 'is-open' : 'is-closed' ?>" title="<?= sanitize($openingHours) ?>"><span class="dot"></span><?= sanitize($openStatus['label']) ?></span><?php endif; ?>
+      <a href="<?= sanitize($mapUrl) ?>" class="btn btn-primary btn-sm" target="_blank" rel="noopener"><i class="fa-solid fa-location-arrow" aria-hidden="true"></i> Directions</a>
+    </div>
   </div>
 </nav>
 
@@ -178,18 +198,23 @@ $seoType = 'website';
   <div class="hero-stars"></div>
   <div class="wrap hero-grid">
     <div class="stagger-text">
-      <div class="eyebrow d0"><?= sanitize(siteSetting('hero_eyebrow', $businessTagline)) ?></div>
+      <div class="hero-badge d0"><span class="hero-badge-dot"></span><?= sanitize(siteSetting('hero_eyebrow', $businessTagline)) ?><?php if ($openStatus): ?><span class="hero-badge-sep"></span><span class="<?= $openStatus['open'] ? 'txt-open' : 'txt-closed' ?>"><?= sanitize($openStatus['label']) ?></span><span class="hb-detail">· <?= sanitize($openStatus['detail']) ?></span><?php endif; ?></div>
       <h1 class="reveal in d1"><?= $heroTitleHtml ?></h1>
       <p class="lead reveal in d2"><?= sanitize(siteSetting('hero_lead', 'Fast machines, a comfortable space, and staff who actually help.')) ?></p>
       <div class="hero-ctas reveal in d3">
-        <a href="#services" class="btn btn-primary">Explore Services</a>
-        <a href="#visit" class="btn btn-ghost">Find Us</a>
+        <a href="#services" class="btn btn-primary">Explore services <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+        <a href="#pricing" class="btn btn-ghost">See prices</a>
       </div>
-      <div class="hero-stats reveal in d4">
-        <div><b><?= (int) $stationStats['total'] ?></b><span>Client stations</span></div>
-        <div><b><?= (int) $stationStats['available'] ?></b><span>Free right now</span></div>
-        <div><b><?= (int) $live['active_sessions'] ?></b><span>Sessions running</span></div>
+      <div class="hero-stats reveal in d4" aria-label="Live café status">
+        <div class="hero-stat"><i class="fa-solid fa-desktop" aria-hidden="true"></i><div><b><?= (int) $stationStats['total'] ?></b><span>Client stations</span></div></div>
+        <div class="hero-stat"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><div><b><?= (int) $stationStats['available'] ?></b><span>Free right now</span></div></div>
+        <div class="hero-stat"><i class="fa-solid fa-bolt" aria-hidden="true"></i><div><b><?= (int) $live['active_sessions'] ?></b><span>Sessions running</span></div></div>
       </div>
+      <ul class="hero-chips reveal in d5" aria-label="Popular services">
+        <?php foreach (array_slice($services, 0, 5) as $service): ?>
+        <li><i class="<?= sanitize($service['icon']) ?>" aria-hidden="true"></i><?= sanitize($service['name']) ?></li>
+        <?php endforeach; ?>
+      </ul>
     </div>
     <div class="hero-visual reveal right">
       <div class="glow"></div>
@@ -302,11 +327,12 @@ $seoType = 'website';
   <circle cx="115" cy="145" r="1.6" fill="#fff" opacity=".7"/>
 </svg>
       </div>
-      <div class="orbit-card oc1"><div class="oc-ic"><i class="fa-solid fa-print"></i></div><div><b><?= $printJob ? 'Print job · ' . sanitize($printJob['status']) : 'Print queue clear' ?></b><span><?= $printJob ? sanitize($printJob['file_name']) . ' · ' . (int) $printJob['pages'] . 'p at ' . sanitize($printJob['station_code'] ?? 'front desk') : 'No jobs waiting at the desk' ?></span></div></div>
+      <div class="orbit-card oc1"><div class="oc-ic"><i class="fa-solid fa-print"></i></div><div><b><?= $printQueue ? 'Print desk busy' : 'Print queue clear' ?></b><span><?= $printQueue ? $printQueue . ' job' . ($printQueue === 1 ? '' : 's') . ' in the queue' : 'No jobs waiting at the desk' ?></span></div></div>
       <div class="orbit-card oc2"><div class="oc-ic"><i class="fa-solid fa-wifi"></i></div><div><b>Stations online</b><span><?= (int) $stationStats['online'] ?> of <?= (int) $stationStats['total'] ?> online<?= (int) $live['printers_online'] > 0 ? ' · ' . (int) $live['printers_online'] . ' printers ready' : '' ?></span></div></div>
-      <div class="orbit-card oc3"><div class="oc-ic"><i class="fa-solid fa-mug-hot"></i></div><div><b>Game console</b><span><?= $gamingFree ?> of <?= (int) $stationStats['gaming'] ?> gaming bays free</span></div></div>
+      <div class="orbit-card oc3"><div class="oc-ic"><i class="fa-solid fa-gamepad"></i></div><div><b>Gaming bays</b><span><?= $gamingFree ?> of <?= (int) $stationStats['gaming'] ?> gaming bays free</span></div></div>
     </div>
   </div>
+  <a class="scroll-cue" href="#gap" aria-label="Scroll to learn more"><span></span></a>
   <svg class="skyline" viewBox="0 0 1400 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="1400" height="220" fill="none"/><rect x="-20" y="122" width="70" height="118" fill="rgba(255,255,255,0.45)"/><rect x="55" y="148" width="45" height="92" fill="rgba(255,255,255,0.45)"/><rect x="102" y="136" width="80" height="104" fill="rgba(255,255,255,0.45)"/><rect x="186" y="146" width="110" height="94" fill="rgba(255,255,255,0.45)"/><rect x="302" y="151" width="60" height="89" fill="rgba(255,255,255,0.45)"/><rect x="364" y="53" width="90" height="187" fill="rgba(255,255,255,0.45)"/><rect x="456" y="137" width="60" height="103" fill="rgba(255,255,255,0.45)"/><rect x="522" y="145" width="90" height="95" fill="rgba(255,255,255,0.45)"/><rect x="620" y="129" width="110" height="111" fill="rgba(255,255,255,0.45)"/><rect x="733" y="145" width="45" height="95" fill="rgba(255,255,255,0.45)"/><rect x="784" y="59" width="110" height="181" fill="rgba(255,255,255,0.45)"/><rect x="896" y="149" width="60" height="91" fill="rgba(255,255,255,0.45)"/><rect x="962" y="126" width="80" height="114" fill="rgba(255,255,255,0.45)"/><rect x="1046" y="124" width="90" height="116" fill="rgba(255,255,255,0.45)"/><rect x="1142" y="82" width="50" height="158" fill="rgba(255,255,255,0.45)"/><rect x="1198" y="114" width="80" height="126" fill="rgba(255,255,255,0.45)"/><rect x="1280" y="112" width="110" height="128" fill="rgba(255,255,255,0.45)"/><rect x="1394" y="144" width="50" height="96" fill="rgba(255,255,255,0.45)"/><rect x="-14" y="132" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.72"/><rect x="-1" y="149" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.81"/><rect x="-1" y="166" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.64"/><rect x="-1" y="200" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.63"/><rect x="12" y="149" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.57"/><rect x="12" y="166" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.69"/><rect x="12" y="200" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.76"/><rect x="25" y="149" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.66"/><rect x="25" y="200" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.93"/><rect x="38" y="166" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.64"/><rect x="61" y="209" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.66"/><rect x="74" y="192" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.56"/><rect x="74" y="209" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.91"/><rect x="87" y="175" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.75"/><rect x="108" y="163" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.94"/><rect x="121" y="146" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.58"/><rect x="121" y="163" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.51"/><rect x="121" y="197" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.5"/><rect x="160" y="146" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.86"/><rect x="160" y="197" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.68"/><rect x="192" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.7"/><rect x="192" y="173" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.52"/><rect x="192" y="190" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.74"/><rect x="205" y="173" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.78"/><rect x="205" y="190" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.93"/><rect x="218" y="173" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.95"/><rect x="231" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.84"/><rect x="244" y="173" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.66"/><rect x="257" y="173" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.89"/><rect x="257" y="207" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.91"/><rect x="270" y="173" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.85"/><rect x="270" y="190" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.78"/><rect x="308" y="178" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.87"/><rect x="321" y="161" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.72"/><rect x="334" y="195" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.93"/><rect x="370" y="97" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.71"/><rect x="370" y="114" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.78"/><rect x="383" y="63" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.55"/><rect x="383" y="114" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.7"/><rect x="383" y="148" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.68"/><rect x="396" y="63" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.51"/><rect x="396" y="199" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.56"/><rect x="409" y="63" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.79"/><rect x="409" y="165" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.6"/><rect x="422" y="63" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.69"/><rect x="422" y="80" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.66"/><rect x="435" y="80" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.85"/><rect x="435" y="131" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.71"/><rect x="435" y="182" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.74"/><rect x="462" y="181" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.62"/><rect x="541" y="155" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.9"/><rect x="541" y="172" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.56"/><rect x="541" y="189" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.64"/><rect x="554" y="172" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.85"/><rect x="554" y="206" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.79"/><rect x="567" y="172" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.94"/><rect x="567" y="189" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.68"/><rect x="580" y="189" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.95"/><rect x="593" y="189" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.51"/><rect x="626" y="156" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.73"/><rect x="626" y="173" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.55"/><rect x="626" y="207" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.54"/><rect x="639" y="139" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.62"/><rect x="639" y="156" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.88"/><rect x="652" y="190" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.53"/><rect x="665" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.79"/><rect x="665" y="190" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.53"/><rect x="678" y="156" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.69"/><rect x="678" y="207" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.61"/><rect x="691" y="139" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.62"/><rect x="691" y="156" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.78"/><rect x="691" y="190" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.73"/><rect x="691" y="207" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.86"/><rect x="704" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.83"/><rect x="704" y="190" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.61"/><rect x="752" y="189" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.94"/><rect x="752" y="206" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.83"/><rect x="765" y="155" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.94"/><rect x="765" y="189" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.83"/><rect x="765" y="206" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.52"/><rect x="790" y="171" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.57"/><rect x="803" y="69" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.94"/><rect x="803" y="103" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.6"/><rect x="803" y="120" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.67"/><rect x="803" y="171" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.85"/><rect x="803" y="188" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.56"/><rect x="816" y="103" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.6"/><rect x="829" y="103" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.57"/><rect x="829" y="154" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.9"/><rect x="842" y="86" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.84"/><rect x="842" y="137" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.76"/><rect x="855" y="69" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.52"/><rect x="855" y="154" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.78"/><rect x="868" y="69" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.84"/><rect x="868" y="137" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.71"/><rect x="868" y="188" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.6"/><rect x="915" y="159" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.63"/><rect x="915" y="176" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.79"/><rect x="915" y="193" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.65"/><rect x="941" y="159" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.53"/><rect x="941" y="176" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.54"/><rect x="941" y="193" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.63"/><rect x="968" y="187" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.59"/><rect x="981" y="153" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.53"/><rect x="994" y="187" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.56"/><rect x="1007" y="153" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.73"/><rect x="1007" y="204" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.68"/><rect x="1020" y="136" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.81"/><rect x="1052" y="134" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.5"/><rect x="1052" y="185" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.82"/><rect x="1065" y="134" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.53"/><rect x="1065" y="185" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.84"/><rect x="1078" y="134" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.88"/><rect x="1078" y="151" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.61"/><rect x="1078" y="168" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.64"/><rect x="1091" y="151" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.68"/><rect x="1091" y="202" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.52"/><rect x="1104" y="202" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.91"/><rect x="1117" y="151" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.65"/><rect x="1117" y="168" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.83"/><rect x="1148" y="92" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.75"/><rect x="1148" y="126" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.53"/><rect x="1161" y="92" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.69"/><rect x="1161" y="126" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.65"/><rect x="1161" y="143" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.67"/><rect x="1161" y="177" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.84"/><rect x="1174" y="143" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.72"/><rect x="1204" y="175" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.67"/><rect x="1217" y="141" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.56"/><rect x="1230" y="158" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.88"/><rect x="1230" y="192" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.6"/><rect x="1243" y="124" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.55"/><rect x="1256" y="124" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.5"/><rect x="1256" y="141" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.91"/><rect x="1256" y="175" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.78"/><rect x="1286" y="156" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.74"/><rect x="1286" y="207" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.5"/><rect x="1299" y="156" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.79"/><rect x="1299" y="207" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.51"/><rect x="1312" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.72"/><rect x="1312" y="207" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.69"/><rect x="1338" y="122" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.83"/><rect x="1338" y="156" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.64"/><rect x="1338" y="190" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.62"/><rect x="1351" y="122" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.72"/><rect x="1351" y="139" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.72"/><rect x="1351" y="173" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.57"/><rect x="1351" y="207" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.56"/><rect x="1364" y="122" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.58"/><rect x="1364" y="173" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.95"/><rect x="1364" y="207" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.79"/><rect x="1400" y="188" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.67"/><rect x="1413" y="154" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.55"/><rect x="1413" y="171" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.66"/><rect x="1413" y="205" width="4" height="6" rx="1" fill="#7C4DFF" opacity="0.67"/><rect x="1426" y="171" width="4" height="6" rx="1" fill="#2FD9EE" opacity="0.54"/><rect x="1426" y="205" width="4" height="6" rx="1" fill="#B43FE0" opacity="0.91"/><rect x="0" y="216" width="1400" height="4" fill="url(#skylineRim)"/><defs><linearGradient id="skylineRim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2FD9EE" stop-opacity="0"/><stop offset="0.5" stop-color="#2FD9EE" stop-opacity="0.55"/><stop offset="1" stop-color="#7C4DFF" stop-opacity="0"/></linearGradient></defs></svg>
 </section>
 
@@ -318,9 +344,9 @@ $seoType = 'website';
       <p>Not just a room full of computers — a comfortable space with the right tools and the right help, whenever you need it.</p>
     </div>
     <div class="stat-row stagger">
-      <div class="stat-card reveal d0 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><b><?= count($services) ?>-in-1</b><p><?= sanitize(siteSetting('gap_first_card', 'Browsing, printing, typing, scanning, mobile money and more in one visit')) ?></p></div>
-      <div class="stat-card reveal d1 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><b>Fresh</b><p>Brand-new machines and a clean, comfortable space to work in</p></div>
-      <div class="stat-card reveal d2 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><b>Guided</b><p>An attendant who sits with you through the screen, not past it</p></div>
+      <div class="stat-card reveal d0 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><span class="stat-ic"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></span><b><?= count($services) ?>-in-1</b><p><?= sanitize(siteSetting('gap_first_card', 'Browsing, printing, typing, scanning, mobile money and more in one visit')) ?></p></div>
+      <div class="stat-card reveal d1 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><span class="stat-ic"><i class="fa-solid fa-microchip" aria-hidden="true"></i></span><b>Fresh</b><p>Brand-new machines and a clean, comfortable space to work in</p></div>
+      <div class="stat-card reveal d2 branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><span class="stat-ic"><i class="fa-solid fa-hands-holding-circle" aria-hidden="true"></i></span><b>Guided</b><p>An attendant who sits with you through the screen, not past it</p></div>
     </div>
   </div>
 </section>
@@ -574,9 +600,17 @@ $seoType = 'website';
       <h2><?= sanitize(siteSetting('services_title', 'Everything one desk in Daffiama can now do')) ?></h2>
       <p><?= sanitize(siteSetting('services_lead', 'Walk in, and walk out done.')) ?></p>
     </div>
-    <div class="card-grid stagger">
+    <?php if (count($serviceCategories) > 2): ?>
+    <div class="filter-chips reveal" role="group" aria-label="Filter services">
+      <button type="button" class="chip" data-filter="all" aria-pressed="true">All <span><?= count($services) ?></span></button>
+      <?php foreach ($serviceCategories as $key => $label): ?>
+      <button type="button" class="chip" data-filter="<?= sanitize($key) ?>" aria-pressed="false"><?= sanitize($label) ?></button>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+    <div class="card-grid stagger" id="serviceGrid">
       <?php foreach ($services as $index => $service): ?>
-      <div class="svc-card reveal <?= staggerClass($index) ?> branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><div class="svc-icon"><i class="<?= sanitize($service['icon']) ?>"></i></div><h3><?= sanitize($service['name']) ?></h3><p><?= sanitize($service['description'] ?: $service['unit_label'] . ' · ' . $service['price_label']) ?></p><div class="svc-meta"><?= sanitize($service['price_label']) ?> <span><?= sanitize($service['unit_label']) ?></span></div></div>
+      <article class="svc-card reveal <?= staggerClass($index) ?> branded" data-category="<?= sanitize((string) ($service['category'] ?? 'other')) ?>"><div class="brand-watermark"><?php echo $brandLogo; ?></div><div class="svc-top"><div class="svc-icon"><i class="<?= sanitize($service['icon']) ?>" aria-hidden="true"></i></div><span class="svc-cat"><?= sanitize($serviceCategories[(string) ($service['category'] ?? 'other')] ?? '') ?></span></div><h3><?= sanitize($service['name']) ?></h3><p><?= sanitize($service['description'] ?: $service['unit_label'] . ' · ' . $service['price_label']) ?></p><div class="svc-meta"><b><?= sanitize($service['price_label']) ?></b> <span><?= sanitize($service['unit_label']) ?></span></div></article>
       <?php endforeach; ?>
       <?php if (!$services): ?>
       <div class="empty-note">Service list unavailable right now — call the front desk on <a href="tel:<?= sanitize($contactPhoneRaw) ?>"><?= sanitize($contactPhone) ?></a>.</div>
@@ -728,10 +762,11 @@ $seoType = 'website';
     <div class="section-head reveal">
       <div class="eyebrow">Why here</div>
       <h2>A café built to stay reliable</h2>
+      <p>Three things we invested in so your visit is never cut short.</p>
     </div>
-    <div class="feat-row">
-      <div class="feat-visual reveal left">
-        <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+    <div class="why-grid stagger">
+      <article class="why-card glass reveal d0">
+        <div class="why-visual"><svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id="gWhy1" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stop-color="#1F2A47"/><stop offset="1" stop-color="#0E1526"/>
@@ -756,14 +791,11 @@ $seoType = 'website';
             <path d="M22,3 L42,10 L42,32 L22,40 L2,32 L2,10 Z" fill="none" stroke="#2FD9EE" stroke-width="1.5" opacity=".8"/>
             <text x="22" y="25" text-anchor="middle" fill="#2FD9EE" font-size="7" font-family="Space Grotesk" font-weight="600">WARRANTY</text>
           </g>
-        </svg>
-      </div>
-      <div class="feat-copy reveal right"><div class="feat-num"><?= sanitize($whyFeatures[0]['feature_number'] ?? '01') ?></div><h3><?= sanitize($whyFeatures[0]['title'] ?? 'Warranty-backed hardware') ?></h3><p><?= sanitize($whyFeatures[0]['description'] ?? 'Six brand-new Core i5 desktops, not refurbished units — chosen to keep downtime, and repair costs, out of your visit.') ?></p></div>
-    </div>
-    <div class="feat-row rev">
-      <div class="feat-copy reveal left"><div class="feat-num"><?= sanitize($whyFeatures[1]['feature_number'] ?? '02') ?></div><h3><?= sanitize($whyFeatures[1]['title'] ?? 'Power you can rely on') ?></h3><p><?= sanitize($whyFeatures[1]['description'] ?? 'UPS backup on every pair of stations keeps your session — and your unsaved form — running through "dumsor."') ?></p></div>
-      <div class="feat-visual reveal right">
-        <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+        </svg></div>
+        <div class="why-copy"><div class="feat-num"><?= sanitize($whyFeatures[0]['feature_number'] ?? '01') ?></div><h3><?= sanitize($whyFeatures[0]['title'] ?? 'Warranty-backed hardware') ?></h3><p><?= sanitize($whyFeatures[0]['description'] ?? 'Six brand-new Core i5 desktops, not refurbished units — chosen to keep downtime, and repair costs, out of your visit.') ?></p></div>
+      </article>
+      <article class="why-card glass reveal d1">
+        <div class="why-visual"><svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id="gWhy2" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stop-color="#19233D"/><stop offset="1" stop-color="#0E1526"/>
@@ -792,12 +824,11 @@ $seoType = 'website';
           <line x1="120" y1="130" x2="70" y2="150" stroke="#2FD9EE" stroke-width="1" class="net-line" opacity=".5"/>
           <line x1="200" y1="130" x2="200" y2="150" stroke="#7C4DFF" stroke-width="1" class="net-line-rev" opacity=".5"/>
           <line x1="280" y1="130" x2="330" y2="150" stroke="#B43FE0" stroke-width="1" class="net-line" opacity=".5"/>
-        </svg>
-      </div>
-    </div>
-    <div class="feat-row">
-      <div class="feat-visual reveal left">
-        <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+        </svg></div>
+        <div class="why-copy"><div class="feat-num"><?= sanitize($whyFeatures[1]['feature_number'] ?? '02') ?></div><h3><?= sanitize($whyFeatures[1]['title'] ?? 'Power you can rely on') ?></h3><p><?= sanitize($whyFeatures[1]['description'] ?? 'UPS backup on every pair of stations keeps your session — and your unsaved form — running through "dumsor."') ?></p></div>
+      </article>
+      <article class="why-card glass reveal d2">
+        <div class="why-visual"><svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id="gWhy3" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stop-color="#1F2A47"/><stop offset="1" stop-color="#0E1526"/>
@@ -829,9 +860,9 @@ $seoType = 'website';
           <!-- Attendant -->
           <circle cx="200" cy="168" r="5" fill="none" stroke="#2FD9EE" stroke-width="1.5" class="net-pulse"/>
           <path d="M194,180 L200,174 L206,180" fill="none" stroke="#2FD9EE" stroke-width="1.5" opacity=".7"/>
-        </svg>
-      </div>
-      <div class="feat-copy reveal right"><div class="feat-num"><?= sanitize($whyFeatures[2]['feature_number'] ?? '03') ?></div><h3><?= sanitize($whyFeatures[2]['title'] ?? 'Secure, monitored space') ?></h3><p><?= sanitize($whyFeatures[2]['description'] ?? 'CCTV coverage and a supervised front desk, so parents and institutions alike trust who\'s on the machines.') ?></p></div>
+        </svg></div>
+        <div class="why-copy"><div class="feat-num"><?= sanitize($whyFeatures[2]['feature_number'] ?? '03') ?></div><h3><?= sanitize($whyFeatures[2]['title'] ?? 'Secure, monitored space') ?></h3><p><?= sanitize($whyFeatures[2]['description'] ?? 'CCTV coverage and a supervised front desk, so parents and institutions alike trust who\'s on the machines.') ?></p></div>
+      </article>
     </div>
   </div>
 </section>
@@ -863,8 +894,14 @@ $seoType = 'website';
       <h2><?= sanitize(siteSetting('pricing_title', 'Straightforward rates')) ?></h2>
       <p><?= sanitize(siteSetting('pricing_lead', 'Indicative pricing — ask the front desk for the current full list.')) ?></p>
     </div>
-    <h3 class="grid-head reveal">Services &amp; rates</h3>
-    <div class="price-grid stagger">
+    <?php if ($plans): ?>
+    <div class="seg-tabs reveal" role="tablist" aria-label="Price lists">
+      <button type="button" role="tab" id="tabRates" aria-controls="panelRates" aria-selected="true">Services &amp; rates</button>
+      <button type="button" role="tab" id="tabPlans" aria-controls="panelPlans" aria-selected="false" tabindex="-1">Packages &amp; passes</button>
+    </div>
+    <?php endif; ?>
+    <h3 class="grid-head reveal sr-only-when-tabs">Services &amp; rates</h3>
+    <div class="price-grid stagger" id="panelRates" role="tabpanel" aria-labelledby="tabRates">
       <?php foreach ($services as $index => $service): ?>
       <div class="price-card reveal <?= staggerClass($index) ?><?= $index === 0 ? ' hi' : '' ?> branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><span class="unit"><?= sanitize($service['name']) ?></span><b class="amt"><?= sanitize($service['price_label']) ?></b><span class="unit"><?= sanitize($service['unit_label']) ?></span><p><?= sanitize($service['description'] ?: 'Ask the front desk for details.') ?></p></div>
       <?php endforeach; ?>
@@ -873,10 +910,10 @@ $seoType = 'website';
       <?php endif; ?>
     </div>
     <?php if ($plans): ?>
-    <h3 class="grid-head reveal">Packages &amp; passes</h3>
-    <div class="price-grid stagger">
+    <h3 class="grid-head reveal sr-only-when-tabs">Packages &amp; passes</h3>
+    <div class="price-grid stagger" id="panelPlans" role="tabpanel" aria-labelledby="tabPlans">
       <?php foreach ($plans as $index => $plan): ?>
-      <div class="price-card reveal <?= staggerClass($index) ?><?= $index === 0 ? ' hi' : '' ?> branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><span class="unit"><?= sanitize($plan['name']) ?></span><b class="amt"><?= sanitize($plan['price_label']) ?></b><span class="unit"><?= sanitize($plan['unit_label']) ?></span><p><?= sanitize($plan['description'] ?: 'Flexible package.') ?></p></div>
+      <div class="price-card reveal <?= staggerClass($index) ?><?= $index === 0 ? ' hi' : '' ?> branded"><div class="brand-watermark"><?php echo $brandLogo; ?></div><?= $index === 0 ? '<span class="price-flag">Popular</span>' : '' ?><span class="unit"><?= sanitize($plan['name']) ?></span><b class="amt"><?= sanitize($plan['price_label']) ?></b><span class="unit"><?= sanitize($plan['unit_label']) ?></span><p><?= sanitize($plan['description'] ?: 'Flexible package.') ?></p></div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
@@ -969,21 +1006,27 @@ $seoType = 'website';
 
 <section id="faq">
   <div class="wrap">
-    <div class="section-head reveal">
+    <div class="faq-layout">
+    <div class="section-head reveal faq-head">
       <div class="eyebrow">FAQ</div>
       <h2>Common questions</h2>
       <p class="lead-muted">Everything you need to know before your first visit.</p>
+      <div class="faq-help glass">
+        <i class="fa-solid fa-headset" aria-hidden="true"></i>
+        <div><b>Still have a question?</b><span>Call <a href="tel:<?= sanitize($contactPhoneRaw) ?>"><?= sanitize($contactPhone) ?></a> or <a href="support-tickets.php">send us a message</a>.</span></div>
+      </div>
     </div>
     <div class="faq-list stagger">
       <?php foreach ($faqs as $index => $faq): ?>
       <div class="faq-item reveal <?= staggerClass($index) ?>">
-        <div class="faq-question"><span><?= sanitize($faq['question']) ?></span><div class="faq-icon"><i class="fa-solid fa-plus"></i></div></div>
-        <div class="faq-answer"><p><?= sanitize($faq['answer']) ?></p></div>
+        <button type="button" class="faq-question" aria-expanded="false" aria-controls="faq-a-<?= $index ?>" id="faq-q-<?= $index ?>"><span><?= sanitize($faq['question']) ?></span><span class="faq-icon" aria-hidden="true"><i class="fa-solid fa-plus"></i></span></button>
+        <div class="faq-answer" id="faq-a-<?= $index ?>" role="region" aria-labelledby="faq-q-<?= $index ?>"><p><?= sanitize($faq['answer']) ?></p></div>
       </div>
       <?php endforeach; ?>
       <?php if (!$faqs): ?>
       <div class="empty-note">No FAQs available right now — call <?= sanitize($contactPhone) ?> for quick answers.</div>
       <?php endif; ?>
+    </div>
     </div>
   </div>
 </section>
@@ -1040,9 +1083,13 @@ $seoType = 'website';
       <p><?= sanitize(siteSetting('visit_lead', 'Near the Daffiama Senior High School & Technical Institute.')) ?></p>
       <div class="visit-list">
         <div class="visit-row"><div class="visit-icon"><i class="fa-solid fa-location-dot" aria-hidden="true"></i></div><div><div class="vlabel">Address</div><div class="vvalue"><?= sanitize($visitAddress) ?></div></div></div>
-        <div class="visit-row"><div class="visit-icon"><i class="fa-solid fa-clock"></i></div><div><div class="vlabel">Hours</div><div class="vvalue"><?= sanitize(siteSetting('opening_hours', 'Monday – Saturday')) ?></div></div></div>
+        <div class="visit-row"><div class="visit-icon"><i class="fa-solid fa-clock"></i></div><div><div class="vlabel">Hours</div><div class="vvalue"><?= sanitize($openingHours) ?><?php if ($openStatus): ?> <span class="open-pill <?= $openStatus['open'] ? 'is-open' : 'is-closed' ?>"><span class="dot"></span><?= sanitize($openStatus['label']) ?> · <?= sanitize($openStatus['detail']) ?></span><?php endif; ?></div></div></div>
         <div class="visit-row"><div class="visit-icon"><i class="fa-solid fa-phone"></i></div><div><div class="vlabel">Phone</div><div class="vvalue"><a href="tel:<?= sanitize($contactPhoneRaw) ?>"><?= sanitize($contactPhone) ?></a></div></div></div>
         <div class="visit-row"><div class="visit-icon"><i class="fa-solid fa-envelope"></i></div><div><div class="vlabel">Email</div><div class="vvalue"><a href="mailto:<?= sanitize($contactEmail) ?>"><?= sanitize($contactEmail) ?></a></div></div></div>
+      </div>
+      <div class="visit-actions">
+        <a href="<?= sanitize($mapUrl) ?>" class="btn btn-primary" target="_blank" rel="noopener"><i class="fa-solid fa-location-arrow" aria-hidden="true"></i> Get directions</a>
+        <a href="tel:<?= sanitize($contactPhoneRaw) ?>" class="btn btn-ghost"><i class="fa-solid fa-phone" aria-hidden="true"></i> Call us</a>
       </div>
     </div>
     <div class="map-card reveal right">
@@ -1060,28 +1107,34 @@ $seoType = 'website';
 <footer>
   <div class="wrap">
     <div class="foot-grid">
-      <div>
+      <div class="foot-brand">
         <div class="brand brand-foot"><span class="dot"></span><?= sanitize($businessName) ?></div>
         <p class="foot-about"><?= sanitize(siteSetting('footer_about', 'Digital access, ICT training and technology support.')) ?></p>
+        <?php if ($openStatus): ?><span class="open-pill <?= $openStatus['open'] ? 'is-open' : 'is-closed' ?>"><span class="dot"></span><?= sanitize($openStatus['label']) ?> · <?= sanitize($openStatus['detail']) ?></span><?php endif; ?>
       </div>
       <div>
         <h5>Explore</h5>
-        <a href="#services">Services</a><a href="#pricing">Pricing</a><a href="#roadmap">Growth Plan</a>
+        <a href="#services">Services</a><a href="#gaming">Gaming</a><a href="#pricing">Pricing</a><a href="#roadmap">Growth plan</a>
+      </div>
+      <div>
+        <h5>Help</h5>
+        <a href="documentation.php">Documentation</a><a href="tutorials.php">Tutorials</a><a href="support-tickets.php">Submit a ticket</a><a href="feedback.php">Share feedback</a>
       </div>
       <div>
         <h5>Contact</h5>
-        <a href="tel:<?= sanitize($contactPhoneRaw) ?>"><?= sanitize($contactPhone) ?></a><a href="mailto:<?= sanitize($contactEmail) ?>"><?= sanitize($contactEmail) ?></a><a href="#visit"><?= sanitize(siteSetting('visit_title', 'Central Daffiama')) ?></a>
+        <a href="tel:<?= sanitize($contactPhoneRaw) ?>"><i class="fa-solid fa-phone" aria-hidden="true"></i> <?= sanitize($contactPhone) ?></a><a href="mailto:<?= sanitize($contactEmail) ?>"><i class="fa-solid fa-envelope" aria-hidden="true"></i> <?= sanitize($contactEmail) ?></a><a href="#visit"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> <?= sanitize(siteSetting('visit_title', 'Central Daffiama')) ?></a>
       </div>
     </div>
     <div class="foot-bottom">
       <span>© <?= date('Y') ?> <?= sanitize($businessName) ?>. All rights reserved.</span>
-      <span><?= sanitize(siteSetting('footer_note', 'Sole Proprietorship')) ?></span>
+      <span><?= sanitize(siteSetting('footer_note', 'Sole Proprietorship')) ?> · <a href="portal/auth.php">Staff sign-in</a></span>
     </div>
   </div>
 </footer>
+<a href="#hero" class="to-top" aria-label="Back to top"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></a>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="assets/js/landing.js"></script>
+<script src="<?= $assetVersion('assets/js/landing.js') ?>"></script>
 <script src="assets/js/public-help-nav.js"></script>
 <script src="assets/js/button-loading.js"></script>
 </body>

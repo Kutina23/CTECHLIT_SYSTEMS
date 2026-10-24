@@ -53,7 +53,10 @@ function posResolveCustomer(array $input): array
         }
         return $customer;
     }
-    if ($customerName === '') {
+    if ($customerName === '' || strcasecmp($customerName, 'Walk-in Customer') === 0) {
+        if (!walkInsAllowed()) {
+            throw new InvalidArgumentException('Walk-in sales are turned off. Select or add the customer first.');
+        }
         $customerName = 'Walk-in Customer';
     }
     $customer = Database::fetchOne(
@@ -188,6 +191,7 @@ function posStartOrExtendSession(int $customerId, int $stationId, int $staffId, 
     if ($occupied) {
         throw new InvalidArgumentException("That station is in use by {$occupied['full_name']}. Choose another station.");
     }
+    assertSessionCapacity();
     $sessionId = Database::insert(
         "INSERT INTO sessions (user_id, station_id, staff_id, status, notes, started_at, scheduled_end_at, created_at)
          VALUES (?, ?, ?, 'active', ?, NOW(), DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())",
